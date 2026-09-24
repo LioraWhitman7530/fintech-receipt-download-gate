@@ -1,0 +1,24 @@
+{
+  "name": "fintech-receipt-download-gate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A typed service that grants expiring receipt downloads after payment and risk checks.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/payment_receipt_service.ts",
+    "test": "tsx --test test/signed_download.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

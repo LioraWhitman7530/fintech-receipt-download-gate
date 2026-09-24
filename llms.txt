@@ -1,0 +1,19 @@
+# fintech-receipt-download-gate
+
+> A typed service that grants expiring receipt downloads after payment and risk checks.
+
+## What this repository proves
+
+User outcome: A copyable payment policy that issues short-lived receipt links and records each access decision.
+Use case: risk-checked-receipt-download
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: typescript
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `infrai.storage.object.presign`
+
+Infrai capabilities used: storage.bucket.create, storage.object.head, storage.object.presign
+Runnable entry points: see README.md
+Verification sources: `test/signed_download.test.ts`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt

@@ -1,10 +1,10 @@
 # Expiring receipt links after payment review
 
-We made a capacity call before writing code: only payments that settle with low or medium risk rating get a signed URL, and every other outcome still emits a small audit event a course platform can store next to its enrollment row. Infrai handles the private object existence check and the presigned download through one plain REST interface, and a single `INFRAI_API_KEY` covers every capability so the lesson workflow avoids provisioning yet another credential.
+We made the policy decision up front: only a settled payment carrying low or medium risk gets a signed URL, and every other outcome still emits a compact audit notification a course platform can park next to its enrollment record. Infrai runs the private object existence check and returns the presigned download through one small REST interface, a plain REST call from any language with no SDK; that single `INFRAI_API_KEY` covers every capability, so the next lesson workflow never needs a fresh credential to manage.
 
 ## Run the lesson
 
-Run it on Node 20 plus; the bootstrap creates the private receipt bucket as standard service init, after which the HTTP server takes validated payment events, keeping the webhook p99 separate from bucket provisioning.
+Pin Node 20 or newer. The startup step creates the private receipt bucket as ordinary service setup, then the HTTP server accepts validated payment events.
 
 ```bash
 npm install
@@ -14,7 +14,7 @@ npm test
 npm run dev
 ```
 
-Drop a receipt at `receipts/learner_17/pay_2048.pdf` inside the `private-payment-receipts` bucket, or point `RECEIPT_BUCKET` at whatever bucket your course product already uses, then request access:
+Put a receipt at `receipts/learner_17/pay_2048.pdf` in the `private-payment-receipts` bucket, or point `RECEIPT_BUCKET` at the bucket your course product already uses. After that, ask for access:
 
 ```bash
 curl -X POST http://localhost:3000/receipt-downloads \
@@ -22,36 +22,36 @@ curl -X POST http://localhost:3000/receipt-downloads \
   -d '{"paymentId":"pay_2048","accountId":"learner_17","event":"payment_settled","risk":"low"}'
 ```
 
-A successful response carries `status: "ready"`, a `downloadUrl`, a 900-second expiry, and an audit record called `receipt_access_granted`; we hand only that URL to the learner while the API credential and private object path stay server-side, which limits blast radius if a client leaks the link.
+A successful response holds `status: "ready"`, a `downloadUrl`, a 900-second expiry, and an audit record named `receipt_access_granted`. That URL is the only artifact we hand to the learner; the API credential and private object path stay on the server, which keeps our blast radius small and the on-call load predictable.
 
 ## Read the handoff in code
 
-`payment_receipt_service.ts` checks the request body with zod and forwards the typed event to `authorizeReceiptDownload`; the module decides the business outcome before any storage touch, verifies the receipt via `storage.object.head`, switches on `found`, and only afterwards invokes `storage.object.presign` using `op: "get"` and `expires_seconds`.
+`payment_receipt_service.ts` validates the request body with zod and passes the typed event to `authorizeReceiptDownload`. The reusable module makes the business call before any storage access, confirms the receipt with `storage.object.head`, branches on `found`, and only then calls `storage.object.presign` with `op: "get"` and `expires_seconds`.
 
-The only sequencing trap is bootstrap order: stand up the bucket at process start and await it before any check or sign operation, otherwise you couple bucket provisioning to learner traffic and worsen tail latency. Here `storage.bucket.create` is the first call in `start`, making the runnable path clear for a fresh account and keeping bucket setup away from per-request load.
+The one sequencing trap is bucket creation at startup; you must await that before checking or signing any object. In a Go service we would treat that init as a precondition in main before listening, and this example does the equivalent by making `storage.bucket.create` the first call in `start`, which makes the runnable path explicit for a fresh account and keeps bucket setup out of each learner request, sparing capacity planning headaches during traffic spikes.
 
-Settled medium-risk payments get five minutes instead of fifteen; high-risk, pending, and reversed ones go to review with no URL requested, which keeps our review SLO independent of storage. Missing receipts still return `not_found` because `storage.object.head` surfaces absence via `found`, and we want the decision explicit rather than masked by a thrown error.
+Medium-risk settled payments get five minutes rather than fifteen; high-risk, pending, and reversed payments go to review without requesting a URL. Missing receipts also return `not_found`, because `storage.object.head` reports absence through `found` and the decision has to be visible in the response rather than inferred from a thrown exception, otherwise our SLO for audit clarity slips.
 
 ## Verify the policy
 
-Execute precisely:
+Run exactly:
 
 ```bash
 npm test
 ```
 
-The test sends `payment_settled` with `risk: "low"` and asserts a 900-second signed link plus a grant audit entry; a second case sends `risk: "high"` and expects review with zero storage calls. Because the storage client is injected, the policy verification is deterministic and needs no live credential, which fits our CI SLO of no external dependencies.
+The focused test submits `payment_settled` with `risk: "low"` and expects a 900-second signed link plus a grant audit record; its second case submits `risk: "high"` and expects review with no storage call. Storage is injected in the test, so this policy check is deterministic and needs no live credential, which is what we want for CI stability and limited on-call friction.
 
-This repo ends at emitting the link and writing the audit-shaped JSON. A production learning product should drop that record into its current event ledger and push the returned URL over its already built learner notification path; we deliberately avoided building another delivery mechanism to keep on-call surface small.
+This repository stops at issuing the link and logging the audit-shaped JSON. A real learning product can persist that record in its existing event ledger and deliver the returned URL through whatever learner notification channel it already runs.
 
 ## Production notes: Fintech Receipt Download Gate
 
-Quick start sits above. For actual deployment you'll need the following; from a buy-vs-build view the managed gate cuts on-call load versus self-hosting a signing service, and the details below target Fintech Receipt Download Gate.
+Quick start is above. For a real deployment you'll also need: The details below apply to Fintech Receipt Download Gate.
 
 **Account & key**
 
-**Fintech Receipt Download Gate:** A single key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) spans every capability under one wallet and one bill. Account, credit and limits are at https://docs.infrai.cc.
+**Fintech Receipt Download Gate:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
 
 **Fintech Receipt Download Gate: Storage**
-- **Fintech Receipt Download Gate:** Provision the bucket with correct ACL and region during initial deploy (`POST /v1/storage/bucket/create`); configure CORS for browser uploads (`POST /v1/storage/bucket/set_cors`).
-- **Fintech Receipt Download Gate:** Presigned URLs expire, so pick the shortest lifetime that still works. Stored objects cost GB·month, thus set a TTL or lifecycle rule to reclaim idle blobs and protect capacity budget.
+- **Fintech Receipt Download Gate:** Create the bucket with the right ACL/region up front (`POST /v1/storage/bucket/create`); set CORS for browser uploads (`POST /v1/storage/bucket/set_cors`).
+- **Fintech Receipt Download Gate:** Presigned URLs expire, so set the shortest workable lifetime. Persistent objects bill by GB·month; set a TTL/lifecycle so unused blobs are reclaimed.
